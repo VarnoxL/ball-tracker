@@ -3,7 +3,9 @@
 ## 1. Project overview
 A computer-vision pipeline that tracks the ball and players in soccer video and detects passes and possession, using YOLOv8 detection and a hand-written Kalman filter. It's a personal project to show depth in CV and algorithms: the tracking and event-detection layers are hand-written on purpose, and everything else uses libraries.
 
-**Status:** not implemented yet. Only the README and this file exist.
+**Status:** layers 1, 2 and 6 are implemented (input, detection, overlay). Layers 3 (Kalman) and 4 (events) are not written yet — those are the user's to write.
+
+Measured on `clip.mp4` (30 s, 1908×1080, 29.97 fps, RTX 3060 Ti): 15.3 fps processing, ball found in 75.3% of frames, longest gap 31 frames (1.0 s), ~20 players per frame.
 
 ## 2. Pipeline
 Each frame goes through layers 1–3. Layers 4–6 work on the resulting time series.
@@ -11,7 +13,7 @@ Each frame goes through layers 1–3. Layers 4–6 work on the resulting time se
 | # | Layer | Input → Output | Built with |
 |---|-------|----------------|------------|
 | 1 | Input | mp4 → frames + `fps`, width, height | `cv2.VideoCapture` |
-| 2 | Detection | frame → player boxes with IDs, best ball box | ultralytics YOLOv8 + ByteTrack |
+| 2 | Detection | frame → player boxes with IDs, best ball box | YOLOv8m + ByteTrack (players), `ball.pt` fine-tune (ball) |
 | 3 | Ball tracking | ball box (or none) → smoothed `(x, y)` per frame | **hand-written** Kalman filter |
 | 4 | Events | ball series + players → possession series, pass events | **hand-written** pure functions |
 | 5 | Aggregation | events → pass count, possession seconds per player | `collections.Counter` |
@@ -25,8 +27,11 @@ requirements.txt  ultralytics, opencv-python, numpy (torch is installed separate
 README.md         user-facing docs
 ```
 Where things live inside `tracker.py`:
-- **Tuning constants** at the top: `CONF_BALL`, `IMGSZ`, `GATE_PX`, `MAX_MISSED`, `POSSESS_PX`, `MIN_HOLD`, `TRAIL`
-- **`Kalman` class**: ball state `[x, y, vx, vy]`, `predict()` / `update(z)`
+- **Tuning constants** at the top: `PLAYER_MODEL`, `BALL_MODEL`, `IMGSZ`, `CONF_BALL`, `CONF_PLAYER`, `TRAIL` (step 2 adds `GATE_PX`, `MAX_MISSED`, `POSSESS_PX`, `MIN_HOLD`)
+- **`foot_point` / `center` / `best_ball`**: pure helpers, no cv2, covered by `test_tracker.py`
+- **`detect_players` / `detect_ball`**: one model each, kept separate because the models differ
+- **`draw`**: player boxes with IDs, ball dot, trail, header line
+- **`Kalman` class** (step 2): ball state `[x, y, vx, vy]`, `predict()` / `update(z)`
 - **`possessor(ball_xy, players)`**: the ID of the player nearest the ball, or `None`
 - **`detect_events(possession_series, fps)`**: a list of `(frame, "pass", from_id, to_id)`
 - **`main()`**: CLI, the frame loop, drawing, and the stats printout
@@ -48,7 +53,9 @@ python tracker.py input.mp4 out.mp4
 # test
 python test_tracker.py
 ```
-The YOLO weights (`yolov8m.pt`) download automatically on the first run. Weights and videos are gitignored.
+`yolov8m.pt` downloads automatically on the first run. `ball.pt` must be fetched once from
+`https://huggingface.co/martinjolif/yolo-football-ball-detection/resolve/main/yolo-football-ball-detection.pt`.
+Weights and videos are gitignored.
 
 ## 5. Conventions and constraints
 - **Coordinates:** pixel space `(x, y)`, origin at the top-left, never normalized.
@@ -59,7 +66,7 @@ The YOLO weights (`yolov8m.pt`) download automatically on the first run. Weights
 - **Tuning values** live only in the constants at the top of `tracker.py`. Never put magic numbers inline.
 - **Event logic stays pure:** it takes series in and returns lists out. No cv2 and no I/O, so it can be tested without video.
 - **Kalman math:** don't change `F`, `H`, `Q`, `R` or the gating without updating §6.
-- **Simplifications** are marked with a `# ponytail:` comment that names the limit and how to upgrade.
+- **Simplifications** get a plain comment naming the limit and the upgrade path. No tool or plugin names in comments.
 - **Git:** never add a `Co-Authored-By` line or any Claude attribution to commits or PRs.
 
 ## 6. Design decisions
@@ -71,6 +78,8 @@ The YOLO weights (`yolov8m.pt`) download automatically on the first run. Weights
 - **Possession = nearest foot point within `POSSESS_PX`, held for `MIN_HOLD` frames:** the hold threshold stops the ball rolling past a player from counting as possession.
 - **Pass = confirmed possessor changes from A to B:** it's simple and testable. The user's original idea (direction change + distance) is a later refinement.
 - **`imgsz=1280`:** the ball is only a few pixels wide in broadcast shots, and the default 640 misses it.
+- **A separate soccer-trained model for the ball:** measured on `clip.mp4`, COCO's `sports ball` class found the ball in 22.3% of frames, and neither `conf=0.05` nor `imgsz=1920` nor `yolov8x` moved it past 27%. A YOLO11n soccer fine-tune reached 75.3% on the same clip. Two models cost about 2 fps, which is worth it.
+- **Players still use COCO:** `person` detection was already finding all 20–23 players per frame, so there was nothing to fix.
 
 ## 7. Known limitations / TODOs
 - [ ] **No teams:** every possession change counts as a pass, interceptions included. Fix: k-means on jersey colors.

@@ -2,12 +2,14 @@
 
 Tracks the ball and players in soccer video, then detects passes and possession and writes an annotated video.
 
-> **Status:** Planned, not implemented yet.
+> **Status:** layers 1, 2 and 6 work (input, detection, overlay). The Kalman filter and event detection are next.
+
+On a 30 s 1080p broadcast clip (RTX 3060 Ti): 900 frames in 59 s, ball detected in 75% of frames, longest gap 1.0 s, ~20 players per frame.
 
 ## Pipeline
 
 1. **Input**: OpenCV reads the mp4 one frame at a time.
-2. **Detection**: YOLOv8 (COCO pretrained) finds players (`person`) and the ball (`sports ball`). Players get IDs from ByteTrack.
+2. **Detection**: two models. YOLOv8m (COCO) finds players, with IDs from ByteTrack. A soccer-specific YOLO11n fine-tune finds the ball, because COCO's `sports ball` class only managed 22% on this footage.
 3. **Ball tracking**: a hand-written Kalman filter (constant velocity) smooths the ball position. It predicts through dropouts and rejects detections that are too far from the prediction (gating).
 4. **Events**: the player closest to the ball holds possession. When possession moves from player A to player B, that counts as a pass.
 5. **Aggregation**: total passes and possession seconds per player.
@@ -23,6 +25,12 @@ python -m venv .venv
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available())"   # should print True
+```
+
+Then fetch the ball weights (5 MB, not in the repo):
+
+```bash
+curl -L -o ball.pt https://huggingface.co/martinjolif/yolo-football-ball-detection/resolve/main/yolo-football-ball-detection.pt
 ```
 
 ## Usage
