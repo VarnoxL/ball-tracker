@@ -17,12 +17,12 @@ On a 30 s 1080p broadcast clip (RTX 3060 Ti): 900 frames in 59 s, ball detected 
 
 ## Setup
 
-Requires Python 3.10+ and an NVIDIA GPU with CUDA.
+Requires Python 3.10–3.13 (PyTorch has no 3.14 wheels) and an NVIDIA GPU with CUDA.
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available())"   # should print True
 ```
@@ -44,5 +44,5 @@ python test_tracker.py
 
 - **No teams.** Every possession change counts as a pass, interceptions included.
 - **ID switches.** Player IDs can swap during occlusions, which creates fake passes.
-- **Weak ball detection** on wide shots, because the COCO model isn't trained on soccer.
+- **Third-party ball weights.** `ball.pt` has unknown training data and failure modes.
 - **Pixel distances.** Thresholds depend on camera zoom. There is no pitch calibration.

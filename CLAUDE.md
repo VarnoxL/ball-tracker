@@ -43,7 +43,7 @@ Keep it as one file until it passes about 400 lines. Then split it along the lay
 # setup (once)
 python -m venv .venv
 .venv\Scripts\activate
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 python -c "import torch; print(torch.cuda.is_available())"   # must print True
 
@@ -84,7 +84,7 @@ Weights and videos are gitignored.
 ## 7. Known limitations / TODOs
 - [ ] **No teams:** every possession change counts as a pass, interceptions included. Fix: k-means on jersey colors.
 - [ ] **ID switches:** ByteTrack swaps player IDs in occlusions, which creates fake passes. Fix: `botsort.yaml` with ReID.
-- [ ] **Weak ball detection** on wide shots with COCO weights. Fix: fine-tune on a soccer-ball dataset.
+- [ ] **Third-party ball weights:** `ball.pt` has unknown training data and failure modes. Fix: fine-tune our own on the Roboflow football-players-detection dataset.
 - [ ] **Pixel thresholds depend on camera zoom.** Fix: a pitch homography to work in meters.
 - [ ] **Camera cuts and replays** reset nothing yet, so tracks jump. Fix: detect scene cuts and reset the Kalman filter.
 - [ ] **Single camera only.** No multi-angle fusion.
