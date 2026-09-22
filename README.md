@@ -2,9 +2,9 @@
 
 Tracks the ball and players in soccer video, then detects passes and possession and writes an annotated video.
 
-> **Status:** layers 1, 2 and 6 work (input, detection, overlay). The Kalman filter and event detection are next.
+> **Status:** layers 1, 2, 3 and 6 work (input, detection, Kalman ball tracking, overlay). Event detection is next.
 
-On a 30 s 1080p broadcast clip (RTX 3060 Ti): 900 frames in 59 s, ball detected in 75% of frames, longest gap 1.0 s, ~20 players per frame.
+On a 30 s 1080p broadcast clip (RTX 3060 Ti): 900 frames in 59 s, ball detected in 75% of frames and tracked in 100% (the Kalman filter predicts through gaps up to 1.0 s), ~20 players per frame.
 
 ## Pipeline
 

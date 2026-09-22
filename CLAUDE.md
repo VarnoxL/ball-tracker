@@ -3,7 +3,7 @@
 ## 1. Project overview
 A computer-vision pipeline that tracks the ball and players in soccer video and detects passes and possession, using YOLOv8 detection and a hand-written Kalman filter. It's a personal project to show depth in CV and algorithms: the tracking and event-detection layers are hand-written on purpose, and everything else uses libraries.
 
-**Status:** layers 1, 2 and 6 are implemented (input, detection, overlay). Layers 3 (Kalman) and 4 (events) are not written yet — those are the user's to write.
+**Status:** layers 1, 2, 3 and 6 are implemented (input, detection, Kalman ball tracking, overlay). Layer 4 (events) is not written yet — that's the user's to write.
 
 Measured on `clip.mp4` (30 s, 1908×1080, 29.97 fps, RTX 3060 Ti): 15.3 fps processing, ball found in 75.3% of frames, longest gap 31 frames (1.0 s), ~20 players per frame.
 
@@ -27,11 +27,11 @@ requirements.txt  ultralytics, opencv-python, numpy (torch is installed separate
 README.md         user-facing docs
 ```
 Where things live inside `tracker.py`:
-- **Tuning constants** at the top: `PLAYER_MODEL`, `BALL_MODEL`, `IMGSZ`, `CONF_BALL`, `CONF_PLAYER`, `TRAIL` (step 2 adds `GATE_PX`, `MAX_MISSED`, `POSSESS_PX`, `MIN_HOLD`)
+- **Tuning constants** at the top: `PLAYER_MODEL`, `BALL_MODEL`, `IMGSZ`, `CONF_BALL`, `CONF_PLAYER`, `TRAIL` `GATE_PX`, `GATE_GROW_PX`, `MAX_MISSED`, `REACQUIRE_N`, `KF_Q`, `KF_R`, `KF_P0_VEL` (layer 4 adds `POSSESS_PX`, `MIN_HOLD`)
 - **`foot_point` / `center` / `best_ball`**: pure helpers, no cv2, covered by `test_tracker.py`
 - **`detect_players` / `detect_ball`**: one model each, kept separate because the models differ
 - **`draw`**: player boxes with IDs, ball dot, trail, header line
-- **`Kalman` class** (step 2): ball state `[x, y, vx, vy]`, `predict()` / `update(z)`
+- **`BallKalman` class**: ball state `[x, y, vx, vy]`, `predict()` / `update(z)` / `step(z)`; `step` returns `(x, y, measured)` or `None` while there is no track
 - **`possessor(ball_xy, players)`**: the ID of the player nearest the ball, or `None`
 - **`detect_events(possession_series, fps)`**: a list of `(frame, "pass", from_id, to_id)`
 - **`main()`**: CLI, the frame loop, drawing, and the stats printout
@@ -72,7 +72,9 @@ Weights and videos are gitignored.
 ## 6. Design decisions
 - **Kalman filter over moving-average smoothing:** it predicts through detection dropouts (occlusion, blur) and gives a predicted position to gate against. Smoothing does neither.
 - **Constant-velocity model:** at 25–30 fps, gravity and bounces barely change velocity from one frame to the next, and the correction step absorbs the rest. Move to constant acceleration only if the trails visibly lag.
-- **Gating (`GATE_PX`):** COCO's `sports ball` class fires on heads and the penalty spot. A detection far from the prediction is treated as noise.
+- **Gating (`GATE_PX`):** COCO's `sports ball` class fires on heads and the penalty spot. A detection far from the prediction is treated as noise. The gate widens by `GATE_GROW_PX` per missed frame because the coasted prediction drifts.
+- **`Q` = random-acceleration model** (`G Gᵀ q`, `G = [½, ½, 1, 1]` for dt = 1), not a diagonal guess, so position and velocity noise are correlated the way physics says. `R` = 9 px² (≈3 px jitter).
+- **Kick re-acquisition (`REACQUIRE_N`):** a kick breaks constant velocity, so the real ball lands outside the gate and the track coasts away from it. Measured on `clip.mp4`: a plain gate rejected a 33-frame pass (frames 835–868, conf ≈0.8). Fix: `REACQUIRE_N` gated-out detections in a row, each within `GATE_PX` of the previous, restart the track. False positives scatter and never chain. Gated-out detections went 80 → 28; the pass now costs 2 frames.
 - **YOLOv8 via ultralytics (not v5):** one pip install, a maintained API and built-in ByteTrack. Swapping in newer weights is a one-line change.
 - **ByteTrack for players, the hand-written Kalman for the ball:** players aren't the focus of the project, so their tracking comes from the library. The ball is the algorithmic showcase.
 - **Possession = nearest foot point within `POSSESS_PX`, held for `MIN_HOLD` frames:** the hold threshold stops the ball rolling past a player from counting as possession.
